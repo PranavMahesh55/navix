@@ -2,15 +2,16 @@
 
 Orbit Atlas is an interactive developer onboarding system that turns GitLab Orbit codebase relationships into a focused architecture map.
 
-Phase 1 uses mocked Orbit responses so the full product loop can be built and demoed before the real Orbit API is connected.
+Phase 1 builds the full product loop with GitLab Orbit integration, source-grounded node explanations, and a React Flow architecture explorer.
 
 ## What Works In This MVP
 
 - Prompt input for architecture questions
-- Mock Orbit query layer
+- GitLab Orbit query layer with mock fallback
 - Graph construction and ranking pipeline
 - Express API endpoints
 - React Flow visualization
+- Source-grounded selected-node explanations
 - Node details panel
 - Learning path
 - Graph expansion from selected nodes
@@ -20,6 +21,7 @@ Phase 1 uses mocked Orbit responses so the full product loop can be built and de
 
 ```bash
 npm install
+cp .env.example .env
 npm run dev
 ```
 
@@ -35,6 +37,10 @@ The web app runs on `http://localhost:5173`.
 - `GET /api/architecture/node/:nodeId`
 - `POST /api/architecture/export/mermaid`
 
-## Orbit Integration Path
+## Environment
 
-The API uses an `OrbitClient` interface. The current provider is `MockOrbitClient`; replace or extend `RealOrbitClient` in `apps/api/src/clients/realOrbitClient.ts` when Orbit credentials and API shape are available.
+Use `.env.example` as the local configuration template. Keep real tokens in `.env`; it is ignored by Git.
+
+## Orbit Integration
+
+The API uses an `OrbitClient` interface. `RealOrbitClient` queries GitLab Orbit, while `MockOrbitClient` remains available for local/demo fallback behavior.
