@@ -155,16 +155,29 @@ export class ArchitectureController {
       throw new Error(`Source-grounded node details failed: node ${details.label} does not have a file path.`);
     }
 
-    const source = await this.sourceClient.getRawFile(repoUrl, details.filePath);
-    const snippet = this.snippetService.buildSnippet(source, details);
-    const semanticDetails = await this.semanticExplanationService.explain({
-      details,
-      repoUrl,
-      sourceSnippet: snippet.text,
-      snippetLineCount: snippet.lineCount
-    });
+    try {
+      const source = await this.sourceClient.getRawFile(repoUrl, details.filePath);
+      const snippet = this.snippetService.buildSnippet(source, details);
+      const semanticDetails = await this.semanticExplanationService.explain({
+        details,
+        repoUrl,
+        sourceSnippet: snippet.text,
+        snippetLineCount: snippet.lineCount
+      });
 
-    res.json(semanticDetails);
+      res.json(semanticDetails);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Source summary unavailable.";
+      res.json({
+        ...details,
+        evidence: details.evidence
+          ? {
+              ...details.evidence,
+              missing: [...new Set([...details.evidence.missing, message])]
+            }
+          : details.evidence
+      });
+    }
   };
 
   exportMermaid = (req: Request, res: Response) => {
