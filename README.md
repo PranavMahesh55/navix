@@ -41,6 +41,33 @@ The web app runs on `http://localhost:5173`.
 
 Use `.env.example` as the local configuration template. Keep real tokens in `.env`; it is ignored by Git.
 
+## Deploy On Vercel
+
+This repo is configured for a single Vercel project:
+
+- Frontend: Vite build from `apps/web`
+- Backend: Express app exposed through Vercel Functions under `/api`
+- Build output: `apps/web/dist`
+
+Use these Vercel project settings:
+
+```txt
+Framework Preset: Other
+Root Directory: .
+Install Command: npm install
+Build Command: npm run build -w @navix/shared && npm run build -w @navix/web
+Output Directory: apps/web/dist
+```
+
+For a same-project Vercel deployment, set:
+
+```txt
+VITE_API_URL=/api
+ENABLE_CACHE=false
+```
+
+Add real API secrets only in the Vercel Environment Variables UI, never in `.env.example`.
+
 ## Orbit Integration
 
 The API uses an `OrbitClient` interface. `RealOrbitClient` queries GitLab Orbit, while `MockOrbitClient` remains available for local/demo fallback behavior.
