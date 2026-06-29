@@ -1,4 +1,4 @@
-import type { LearningPathStep } from "@orbit-atlas/shared";
+import type { LearningPathStep } from "@navix/shared";
 
 type LearningPathProps = {
   steps: LearningPathStep[];

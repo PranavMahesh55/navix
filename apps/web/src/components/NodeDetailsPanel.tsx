@@ -1,16 +1,15 @@
 import {
-  BookOpen,
   Code2,
   Compass,
+  Clipboard,
   Database,
+  ExternalLink,
   FileText,
-  HelpCircle,
   ListChecks,
-  Route,
   ShieldCheck,
   X
 } from "lucide-react";
-import type { ArchitectureResponse, GraphNode, NodeDetails } from "@orbit-atlas/shared";
+import type { ArchitectureResponse, GraphNode, NodeDetails } from "@navix/shared";
 import { roleStyles } from "../graph/roleStyles";
 
 type NodeDetailsPanelProps = {
@@ -25,8 +24,8 @@ type NodeDetailsPanelProps = {
 const EmptyState = () => (
   <div className="empty-panel">
     <ShieldCheck size={26} />
-    <h2>Orbit Grounding</h2>
-    <p>Every node and explanation is derived from Orbit-indexed relationships.</p>
+    <h2>Select a node</h2>
+    <p>Purpose, files, dependencies, and tests will appear here.</p>
   </div>
 );
 
@@ -101,33 +100,31 @@ export const NodeDetailsPanel = ({
           <div className="source-grounding-loading" role="status" aria-live="polite">
             <span />
             <div>
-              <strong>LLM summarization in progress</strong>
-              <p>Fetching GitLab source and generating a source-grounded purpose for this node.</p>
+              <strong>Summarizing source</strong>
             </div>
           </div>
         ) : sourceDetailsFailed ? (
           <div className="source-grounding-loading failed" role="status" aria-live="polite">
             <div>
-              <strong>Source-grounded purpose failed</strong>
-              <p>Check the API error message, then retry by regenerating the map or selecting another node.</p>
+              <strong>Source summary failed</strong>
             </div>
           </div>
         ) : (
           <div className="source-grounding-loading" role="status" aria-live="polite">
             <span />
             <div>
-              <strong>Waiting for LLM summarization</strong>
-              <p>The source-grounded purpose will appear here when generation starts.</p>
+              <strong>Source summary pending</strong>
             </div>
           </div>
         )}
         {selectedDetails.sourceGrounding ? (
           <p className="source-grounding-note">
-            Source-grounded with {selectedDetails.sourceGrounding.model} from {selectedDetails.sourceGrounding.snippetLineCount} lines in{" "}
-            {compactPath(selectedDetails.sourceGrounding.filePath)}.
+            Source: {compactPath(selectedDetails.sourceGrounding.filePath)}
           </p>
         ) : null}
       </section>
+
+      <EvidencePanel details={selectedDetails} />
 
       <section>
         <h3>
@@ -142,7 +139,7 @@ export const NodeDetailsPanel = ({
           <FileText size={16} />
           Related Files ({relatedFiles.length})
         </h3>
-        <FileRows files={relatedFiles} />
+        <FileRows files={relatedFiles} repoUrl={response.grounding.repoUrl} />
       </section>
 
       <section>
@@ -150,33 +147,7 @@ export const NodeDetailsPanel = ({
           <ListChecks size={16} />
           Related Tests ({relatedTests.length})
         </h3>
-        <FileRows files={relatedTests} />
-      </section>
-
-      {selectedDetails.indexedDefinitions && selectedDetails.indexedDefinitions.length > 0 ? (
-        <section>
-          <h3>
-            <BookOpen size={16} />
-            Indexed Definitions
-          </h3>
-          <CompactList items={selectedDetails.indexedDefinitions} empty="No indexed definitions in graph" />
-        </section>
-      ) : null}
-
-      <section>
-        <h3>
-          <Route size={16} />
-          Onboarding Notes
-        </h3>
-        <GuidanceList items={selectedDetails.onboardingNotes ?? []} empty="No onboarding notes for this node" />
-      </section>
-
-      <section>
-        <h3>
-          <HelpCircle size={16} />
-          Questions Before Editing
-        </h3>
-        <GuidanceList items={selectedDetails.inspectionQuestions ?? []} empty="No inspection questions for this node" />
+        <FileRows files={relatedTests} repoUrl={response.grounding.repoUrl} />
       </section>
 
       {mermaid ? (
@@ -221,7 +192,64 @@ const DependencyStrip = ({ dependencies }: { dependencies: GraphNode[] }) => {
   );
 };
 
-const FileRows = ({ files }: { files: Array<{ name: string; meta: string; signal?: string | undefined }> }) => {
+const EvidencePanel = ({ details }: { details: NodeDetails }) => {
+  const evidence = details.evidence;
+  const confidence = evidence?.confidence ?? (details.sourceGrounding ? "medium" : "low");
+  const missing = evidence?.missing ?? [];
+  const relationshipEvidence = details.relationshipEvidence ?? [];
+
+  return (
+    <section>
+      <h3>
+        <ShieldCheck size={16} />
+        Evidence
+      </h3>
+      <div className="evidence-grid">
+        <div>
+          <span>Confidence</span>
+          <strong className={`confidence-${confidence}`}>{confidence}</strong>
+        </div>
+        <div>
+          <span>Definitions</span>
+          <strong>{evidence?.indexedDefinitionCount ?? details.indexedDefinitions?.length ?? 0}</strong>
+        </div>
+        <div>
+          <span>Incoming</span>
+          <strong>{evidence?.incomingCount ?? details.dependents.length}</strong>
+        </div>
+        <div>
+          <span>Outgoing</span>
+          <strong>{evidence?.outgoingCount ?? details.dependencies.length}</strong>
+        </div>
+      </div>
+      {relationshipEvidence.length > 0 ? (
+        <ul className="evidence-list">
+          {relationshipEvidence.slice(0, 2).map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      ) : null}
+      {missing.length > 0 ? (
+        <div className="missing-evidence">
+          <strong>Missing signals</strong>
+          <ul>
+            {missing.slice(0, 3).map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+};
+
+const FileRows = ({
+  files,
+  repoUrl
+}: {
+  files: Array<{ name: string; meta: string; path?: string | undefined; signal?: string | undefined }>;
+  repoUrl?: string | undefined;
+}) => {
   if (files.length === 0) {
     return <p className="muted-text">No grounded files or tests were returned for this section.</p>;
   }
@@ -230,46 +258,33 @@ const FileRows = ({ files }: { files: Array<{ name: string; meta: string; signal
     <div className="file-row-list">
       {files.map((file) => (
         <div key={`${file.name}-${file.meta}`}>
-          <span>
-            <FileText size={14} />
-            {file.name}
+          <span className="file-row-main">
+            <span>
+              <FileText size={14} />
+              {file.name}
+            </span>
+            <small>{file.signal ?? file.meta}</small>
           </span>
-          <small>{file.signal ?? file.meta}</small>
+          {repoUrl && file.path ? (
+            <a href={gitlabFileUrl(repoUrl, file.path)} target="_blank" rel="noreferrer" title="Open in GitLab">
+              <ExternalLink size={14} />
+            </a>
+          ) : null}
+          {file.path ? (
+            <button
+              type="button"
+              title="Copy file path"
+              aria-label={`Copy path for ${file.name}`}
+              onClick={() => {
+                void navigator.clipboard?.writeText(file.path ?? "");
+              }}
+            >
+              <Clipboard size={14} />
+            </button>
+          ) : null}
         </div>
       ))}
     </div>
-  );
-};
-
-const CompactList = ({ items, empty }: { items: string[]; empty: string }) => {
-  const uniqueItems = [...new Set(items)];
-
-  if (uniqueItems.length === 0) {
-    return <p className="muted-text">{empty}</p>;
-  }
-
-  return (
-    <ul className="compact-list">
-      {uniqueItems.map((item) => (
-        <li key={item}>{item}</li>
-      ))}
-    </ul>
-  );
-};
-
-const GuidanceList = ({ items, empty }: { items: string[]; empty: string }) => {
-  const uniqueItems = [...new Set(items)];
-
-  if (uniqueItems.length === 0) {
-    return <p className="muted-text">{empty}</p>;
-  }
-
-  return (
-    <ul className="guidance-list">
-      {uniqueItems.map((item) => (
-        <li key={item}>{item}</li>
-      ))}
-    </ul>
   );
 };
 
@@ -283,7 +298,8 @@ const buildRelatedFiles = (details: NodeDetails) => {
   const unique = [...new Set(files)].slice(0, 3);
   return unique.map((file) => ({
     name: basename(file),
-    meta: compactPath(file)
+    meta: compactPath(file),
+    path: file
   }));
 };
 
@@ -292,7 +308,8 @@ const buildRelatedTests = (details: NodeDetails) => {
 
   return tests.slice(0, 3).map((file) => ({
     name: basename(file),
-    meta: compactPath(file)
+    meta: compactPath(file),
+    path: file
   }));
 };
 
@@ -301,4 +318,8 @@ const basename = (path: string) => path.split("/").filter(Boolean).at(-1) ?? pat
 const compactPath = (path: string) => {
   const parts = path.split("/").filter(Boolean);
   return parts.length > 2 ? `${parts.at(-2)}/${parts.at(-1)}` : path;
+};
+
+const gitlabFileUrl = (repoUrl: string, path: string) => {
+  return `${repoUrl.replace(/\/+$/, "")}/-/blob/main/${path.replace(/^\/+/, "")}`;
 };

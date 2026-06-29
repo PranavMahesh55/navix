@@ -1,5 +1,5 @@
 export const GRAPH_LIMITS = {
-  maxNodes: 15,
+  maxNodes: 20,
   maxEdges: 30,
   defaultDepth: 2
 } as const;
@@ -45,6 +45,10 @@ export type GraphEdge = {
   target: string;
   label: string;
   type: "execution" | "dependency" | "data" | "test" | "ownership" | "external";
+  evidence?: {
+    source: "orbit-call" | "orbit-import" | "test-match" | "module-context" | "mock";
+    detail: string;
+  } | undefined;
 };
 
 export type PromptIntent = {
@@ -87,6 +91,7 @@ export type OrbitDependency = {
   target: string;
   label: string;
   type: GraphEdge["type"];
+  evidence?: GraphEdge["evidence"];
 };
 
 export type OrbitQueryResult = {
@@ -112,6 +117,17 @@ export type NodeDetails = {
   dependencies: GraphNode[];
   dependents: GraphNode[];
   relatedTests: GraphNode[];
+  relationshipEvidence?: string[] | undefined;
+  evidence?: {
+    sourceFile?: string | undefined;
+    snippetLineCount?: number | undefined;
+    indexedDefinitionCount: number;
+    incomingCount: number;
+    outgoingCount: number;
+    relatedTestCount: number;
+    confidence: "high" | "medium" | "low";
+    missing: string[];
+  } | undefined;
   tags: string[];
   sourceGrounding?: {
     status: "openai";

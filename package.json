@@ -1,5 +1,5 @@
 {
-  "name": "orbit-atlas",
+  "name": "navix",
   "version": "0.1.0",
   "private": true,
   "description": "Interactive developer onboarding system powered by GitLab Orbit knowledge graphs.",
@@ -8,11 +8,12 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run build -w @orbit-atlas/shared && concurrently -n api,web -c cyan,magenta \"npm run dev -w @orbit-atlas/api\" \"npm run dev -w @orbit-atlas/web\"",
-    "build": "npm run build -w @orbit-atlas/shared && npm run build -w @orbit-atlas/api && npm run build -w @orbit-atlas/web",
-    "typecheck": "npm run build -w @orbit-atlas/shared && npm run typecheck -w @orbit-atlas/api && npm run typecheck -w @orbit-atlas/web",
+    "dev": "npm run build -w @navix/shared && concurrently -n api,web -c cyan,magenta \"npm run dev -w @navix/api\" \"npm run dev -w @navix/web\"",
+    "build": "npm run build -w @navix/shared && npm run build -w @navix/api && npm run build -w @navix/web",
+    "typecheck": "npm run build -w @navix/shared && npm run typecheck -w @navix/api && npm run typecheck -w @navix/web",
     "lint": "npm run typecheck",
-    "start": "npm run start -w @orbit-atlas/api"
+    "test": "node --import tsx --test \"apps/api/src/**/*.test.ts\"",
+    "start": "npm run start -w @navix/api"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

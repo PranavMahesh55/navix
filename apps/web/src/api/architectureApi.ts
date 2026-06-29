@@ -7,7 +7,7 @@ import type {
   NodeDetails,
   NodeExpansionRequest,
   NodeExpansionResponse
-} from "@orbit-atlas/shared";
+} from "@navix/shared";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api";
 

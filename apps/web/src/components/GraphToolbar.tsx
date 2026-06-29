@@ -3,20 +3,28 @@ import { Download, Eye, EyeOff, Focus, GitFork, Maximize2 } from "lucide-react";
 type GraphToolbarProps = {
   showTests: boolean;
   hasSelection: boolean;
+  loading: boolean;
+  expanded: boolean;
   onResetView: () => void;
   onToggleTests: () => void;
   onExpandSelected: () => void;
   onExportMermaid: () => void;
+  onToggleExpanded: () => void;
 };
 
 export const GraphToolbar = ({
   showTests,
   hasSelection,
+  loading,
+  expanded,
   onResetView,
   onToggleTests,
   onExpandSelected,
-  onExportMermaid
+  onExportMermaid,
+  onToggleExpanded
 }: GraphToolbarProps) => {
+  const expandingSelection = loading && hasSelection;
+
   return (
     <div className="graph-toolbar" aria-label="Graph tools">
       <button type="button" title="Reset view" aria-label="Reset view" onClick={onResetView}>
@@ -33,9 +41,10 @@ export const GraphToolbar = ({
       </button>
       <button
         type="button"
-        title="Expand selected node"
-        aria-label="Expand selected node"
-        disabled={!hasSelection}
+        title={expandingSelection ? "Expanding selected node" : "Expand selected node"}
+        aria-label={expandingSelection ? "Expanding selected node" : "Expand selected node"}
+        className={expandingSelection ? "active" : ""}
+        disabled={!hasSelection || loading}
         onClick={onExpandSelected}
       >
         <GitFork size={18} />
@@ -43,7 +52,13 @@ export const GraphToolbar = ({
       <button type="button" title="Export Mermaid" aria-label="Export Mermaid" onClick={onExportMermaid}>
         <Download size={18} />
       </button>
-      <button type="button" title="Fit graph" aria-label="Fit graph" onClick={onResetView}>
+      <button
+        type="button"
+        title={expanded ? "Restore map layout" : "Expand map"}
+        aria-label={expanded ? "Restore map layout" : "Expand map"}
+        className={expanded ? "active" : ""}
+        onClick={onToggleExpanded}
+      >
         <Maximize2 size={18} />
       </button>
     </div>

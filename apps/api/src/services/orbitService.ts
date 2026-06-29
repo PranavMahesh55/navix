@@ -1,4 +1,4 @@
-import type { NodeDetails, OrbitQueryResult, PromptIntent } from "@orbit-atlas/shared";
+import type { NodeDetails, OrbitQueryResult, PromptIntent } from "@navix/shared";
 import { config } from "../config/env.js";
 import { MockOrbitClient } from "../clients/mockOrbitClient.js";
 import { RealOrbitClient } from "../clients/realOrbitClient.js";

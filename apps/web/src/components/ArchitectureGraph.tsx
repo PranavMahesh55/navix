@@ -11,7 +11,7 @@ import {
   type Node,
   type NodeProps
 } from "@xyflow/react";
-import type { GraphEdge, GraphNode } from "@orbit-atlas/shared";
+import type { GraphEdge, GraphNode } from "@navix/shared";
 import { buildFlowElements } from "../graph/layout";
 import { roleStyles } from "../graph/roleStyles";
 import type { AtlasNodeData } from "../types/graph";
@@ -21,8 +21,10 @@ type ArchitectureGraphProps = {
   edges: GraphEdge[];
   showTests: boolean;
   selectedNodeId?: string | undefined;
+  selectedEdgeId?: string | undefined;
   resetSignal: number;
   onSelectNode: (node: GraphNode) => void;
+  onSelectEdge?: ((edge: GraphEdge) => void) | undefined;
 };
 
 const AtlasNode = memo(({ data, selected }: NodeProps<Node<AtlasNodeData>>) => {
@@ -57,10 +59,12 @@ const GraphCanvas = ({
   edges,
   showTests,
   selectedNodeId,
+  selectedEdgeId,
   resetSignal,
-  onSelectNode
+  onSelectNode,
+  onSelectEdge
 }: ArchitectureGraphProps) => {
-  const { flowNodes, flowEdges } = buildFlowElements(nodes, edges, showTests, selectedNodeId);
+  const { flowNodes, flowEdges } = buildFlowElements(nodes, edges, showTests, selectedNodeId, selectedEdgeId);
   const { fitView } = useReactFlow();
 
   useEffect(() => {
@@ -89,6 +93,12 @@ const GraphCanvas = ({
       nodesConnectable={false}
       elementsSelectable
       onNodeClick={(_event, node) => onSelectNode(node.data.atlasNode)}
+      onEdgeClick={(_event, edge) => {
+        const graphEdge = edges.find((candidate) => candidate.id === edge.id);
+        if (graphEdge) {
+          onSelectEdge?.(graphEdge);
+        }
+      }}
     >
       <Background color="#d6dde1" gap={24} />
       <MiniMap

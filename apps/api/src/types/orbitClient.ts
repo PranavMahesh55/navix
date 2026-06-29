@@ -2,7 +2,7 @@ import type {
   NodeDetails,
   OrbitQueryResult,
   PromptIntent
-} from "@orbit-atlas/shared";
+} from "@navix/shared";
 
 export type OrbitClient = {
   queryArchitecture(input: PromptIntent, repoUrl?: string): Promise<OrbitQueryResult>;

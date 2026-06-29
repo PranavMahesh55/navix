@@ -5,7 +5,7 @@ import type {
   OrbitQueryResult,
   OrbitSymbol,
   PromptIntent
-} from "@orbit-atlas/shared";
+} from "@navix/shared";
 import type { OrbitClient } from "../types/orbitClient.js";
 
 type MockFeatureGraph = {
@@ -52,7 +52,11 @@ const edge = (
   source,
   target,
   label,
-  type
+  type,
+  evidence: {
+    source: "mock",
+    detail: `Mock Orbit relationship: ${label}.`
+  }
 });
 
 const authGraph: MockFeatureGraph = {

@@ -38,7 +38,7 @@ export const config = {
   orbitApiKey: process.env.ORBIT_API_KEY,
   openAiApiKey: process.env.OPENAI_API_KEY,
   openAiModel: process.env.OPENAI_MODEL ?? "gpt-4.1-mini",
-  maxGraphNodes: numberFromEnv("MAX_GRAPH_NODES", 15),
+  maxGraphNodes: numberFromEnv("MAX_GRAPH_NODES", 20),
   maxGraphEdges: numberFromEnv("MAX_GRAPH_EDGES", 30),
   defaultGraphDepth: numberFromEnv("DEFAULT_GRAPH_DEPTH", 2),
   enableCache: booleanFromEnv("ENABLE_CACHE", true),

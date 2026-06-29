@@ -1,6 +1,6 @@
-# Orbit Atlas
+# Navix
 
-Orbit Atlas is an interactive developer onboarding system that turns GitLab Orbit codebase relationships into a focused architecture map.
+Navix is an interactive developer onboarding system that turns GitLab Orbit codebase relationships into a focused architecture map.
 
 Phase 1 builds the full product loop with GitLab Orbit integration, source-grounded node explanations, and a React Flow architecture explorer.
 

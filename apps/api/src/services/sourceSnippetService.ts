@@ -1,4 +1,4 @@
-import type { NodeDetails } from "@orbit-atlas/shared";
+import type { NodeDetails } from "@navix/shared";
 
 type SourceSnippet = {
   text: string;

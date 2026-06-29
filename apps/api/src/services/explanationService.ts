@@ -7,7 +7,7 @@ import type {
   NodeDetails,
   OrbitQueryResult,
   PromptIntent
-} from "@orbit-atlas/shared";
+} from "@navix/shared";
 
 type RoleGuidance = {
   noun: string;
@@ -123,20 +123,26 @@ export class ExplanationService {
       const relatedTests = nodes.filter((candidate) => {
         return candidate.type === "test" && (candidate.dependencies ?? []).includes(node.id);
       });
+      const relationshipEvidence = this.buildRelationshipEvidence(node, edges, byId);
+      const uniqueOutgoing = uniqueNodes(outgoing);
+      const uniqueIncoming = uniqueNodes(incoming);
+      const uniqueRelatedTests = uniqueNodes(relatedTests);
 
       details[node.id] = {
         id: node.id,
         label: node.label,
         type: node.type,
         filePath: node.filePath,
-        summary: node.summary ?? this.fallbackSummary(node, uniqueNodes(outgoing), uniqueNodes(incoming)),
-        purpose: this.buildPurpose(node, uniqueNodes(outgoing), uniqueNodes(incoming), uniqueNodes(relatedTests)),
+        summary: node.summary ?? this.fallbackSummary(node, uniqueOutgoing, uniqueIncoming),
+        purpose: this.buildPurpose(node, uniqueOutgoing, uniqueIncoming, uniqueRelatedTests),
         indexedDefinitions: node.indexedDefinitions ?? [],
-        onboardingNotes: this.buildOnboardingNotes(node, uniqueNodes(outgoing), uniqueNodes(incoming), uniqueNodes(relatedTests)),
-        inspectionQuestions: this.buildInspectionQuestions(node, uniqueNodes(outgoing), uniqueNodes(incoming), uniqueNodes(relatedTests)),
-        dependencies: uniqueNodes(outgoing),
-        dependents: uniqueNodes(incoming),
-        relatedTests: uniqueNodes(relatedTests),
+        onboardingNotes: this.buildOnboardingNotes(node, uniqueOutgoing, uniqueIncoming, uniqueRelatedTests),
+        inspectionQuestions: this.buildInspectionQuestions(node, uniqueOutgoing, uniqueIncoming, uniqueRelatedTests),
+        dependencies: uniqueOutgoing,
+        dependents: uniqueIncoming,
+        relatedTests: uniqueRelatedTests,
+        relationshipEvidence,
+        evidence: this.buildEvidence(node, uniqueOutgoing, uniqueIncoming, uniqueRelatedTests, relationshipEvidence),
         tags: node.tags ?? []
       };
     }
@@ -156,7 +162,7 @@ export class ExplanationService {
     const visited = new Set<string>();
     const queue = [entry.id];
 
-    while (queue.length > 0 && path.length < 6) {
+    while (queue.length > 0 && path.length < 5) {
       const nodeId = queue.shift();
       if (!nodeId || visited.has(nodeId)) {
         continue;
@@ -174,6 +180,23 @@ export class ExplanationService {
         .filter((edge) => edge.source === nodeId && edge.type !== "test")
         .map((edge) => edge.target);
       queue.push(...nextIds);
+    }
+
+    if (path.length < 4) {
+      const candidates = [...nodes]
+        .filter((node) => !visited.has(node.id) && node.type !== "test")
+        .sort((a, b) => {
+          const aDegree = edges.filter((edge) => edge.source === a.id || edge.target === a.id).length;
+          const bDegree = edges.filter((edge) => edge.source === b.id || edge.target === b.id).length;
+          return (bDegree - aDegree) || (b.importanceScore - a.importanceScore);
+        });
+      for (const candidate of candidates) {
+        if (path.length >= 5) {
+          break;
+        }
+        visited.add(candidate.id);
+        path.push(candidate);
+      }
     }
 
     const firstTest = nodes.find((node) => node.type === "test");
@@ -198,7 +221,7 @@ export class ExplanationService {
       return `Orbit returned no grounded components for "${prompt.rawPrompt}".`;
     }
 
-    return `For "${prompt.rawPrompt}", Orbit Atlas found ${nodes.length} grounded component${nodes.length === 1 ? "" : "s"} and ${edges.length} relationship${edges.length === 1 ? "" : "s"}. Start with ${entry.label}, then follow the mapped relationships toward ${core.label} to understand the main path. Treat the side panel as the reading guide: it shows what each node represents, which definitions Orbit indexed, and what to check before editing.${tests > 0 ? ` ${tests} related test node${tests === 1 ? "" : "s"} appeared in this graph.` : ""}`;
+    return `For "${prompt.rawPrompt}", Navix found ${nodes.length} grounded component${nodes.length === 1 ? "" : "s"} and ${edges.length} relationship${edges.length === 1 ? "" : "s"}. Start with ${entry.label}, then follow the mapped relationships toward ${core.label} to understand the main path. Treat the side panel as the reading guide: it shows what each node represents, which definitions Orbit indexed, and what to check before editing.${tests > 0 ? ` ${tests} related test node${tests === 1 ? "" : "s"} appeared in this graph.` : ""}`;
   }
 
   private learningReason(node: GraphNode, index: number) {
@@ -219,6 +242,57 @@ export class ExplanationService {
     }
 
     return "Follow the next dependency in the execution path.";
+  }
+
+  private buildRelationshipEvidence(
+    node: GraphNode,
+    edges: GraphEdge[],
+    byId: Map<string, GraphNode>
+  ) {
+    return edges
+      .filter((edge) => edge.source === node.id || edge.target === node.id)
+      .slice(0, 8)
+      .map((edge) => {
+        const source = byId.get(edge.source)?.label ?? edge.source;
+        const target = byId.get(edge.target)?.label ?? edge.target;
+        const evidence = edge.evidence?.detail ?? edge.label;
+        return `${source} -> ${target}: ${evidence}`;
+      });
+  }
+
+  private buildEvidence(
+    node: GraphNode,
+    outgoing: GraphNode[],
+    incoming: GraphNode[],
+    relatedTests: GraphNode[],
+    relationshipEvidence: string[]
+  ): NodeDetails["evidence"] {
+    const missing: string[] = [];
+    if (relatedTests.length === 0) {
+      missing.push("No related tests appeared at this graph depth.");
+    }
+    if (outgoing.length === 0) {
+      missing.push("No outgoing dependency was visible at this graph depth.");
+    }
+    if ((node.indexedDefinitions ?? []).length === 0) {
+      missing.push("Orbit did not return named definitions for this node.");
+    }
+
+    const confidence = relationshipEvidence.length > 0 && (node.indexedDefinitions ?? []).length > 0
+      ? "high"
+      : node.filePath || relationshipEvidence.length > 0
+        ? "medium"
+        : "low";
+
+    return {
+      sourceFile: node.filePath,
+      indexedDefinitionCount: node.indexedDefinitions?.length ?? 0,
+      incomingCount: incoming.length,
+      outgoingCount: outgoing.length,
+      relatedTestCount: relatedTests.length,
+      confidence,
+      missing
+    };
   }
 
   private fallbackSummary(node: GraphNode, outgoing: GraphNode[], incoming: GraphNode[]) {

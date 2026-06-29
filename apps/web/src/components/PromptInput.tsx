@@ -12,8 +12,7 @@ type PromptInputProps = {
 const suggestions = [
   "Explain authentication flow",
   "Show checkout architecture",
-  "What services use Redis?",
-  "How are payments processed?"
+  "What services use Redis?"
 ];
 
 export const PromptInput = ({ initialPrompt, repoUrl, depth, loading, onSubmit }: PromptInputProps) => {
@@ -32,7 +31,7 @@ export const PromptInput = ({ initialPrompt, repoUrl, depth, loading, onSubmit }
     <form className="query-console" onSubmit={submit}>
       <div className="query-input-row">
         <label className="sr-only" htmlFor="architecture-prompt">
-          Ask Atlas
+          Ask Navix
         </label>
         <input
           id="architecture-prompt"

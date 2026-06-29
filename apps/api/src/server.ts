@@ -17,7 +17,7 @@ app.use(express.json({ limit: "1mb" }));
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
-    service: "orbit-atlas-api",
+    service: "navix-api",
     provider: config.orbitProvider === "orbit" ? "gitlab-orbit" : "mock-orbit",
     timestamp: new Date().toISOString()
   });
@@ -44,5 +44,5 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 app.listen(config.port, () => {
-  console.log(`Orbit Atlas API listening on http://localhost:${config.port}`);
+  console.log(`Navix API listening on http://localhost:${config.port}`);
 });

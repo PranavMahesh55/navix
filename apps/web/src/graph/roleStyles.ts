@@ -1,4 +1,4 @@
-import type { ArchitectureNodeType } from "@orbit-atlas/shared";
+import type { ArchitectureNodeType } from "@navix/shared";
 
 type RoleStyle = {
   label: string;

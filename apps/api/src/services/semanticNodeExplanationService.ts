@@ -1,4 +1,4 @@
-import type { NodeDetails } from "@orbit-atlas/shared";
+import type { NodeDetails } from "@navix/shared";
 import { config } from "../config/env.js";
 
 type SemanticExplanationInput = {
@@ -37,6 +37,23 @@ export class SemanticNodeExplanationService {
       purpose: payload.purpose,
       onboardingNotes: payload.onboardingNotes,
       inspectionQuestions: payload.inspectionQuestions,
+      evidence: input.details.evidence
+        ? {
+            ...input.details.evidence,
+            sourceFile: input.details.filePath ?? input.details.evidence.sourceFile,
+            snippetLineCount: input.snippetLineCount,
+            confidence: input.details.relationshipEvidence && input.details.relationshipEvidence.length > 0 ? "high" : input.details.evidence.confidence
+          }
+        : {
+            sourceFile: input.details.filePath,
+            snippetLineCount: input.snippetLineCount,
+            indexedDefinitionCount: input.details.indexedDefinitions?.length ?? 0,
+            incomingCount: input.details.dependents.length,
+            outgoingCount: input.details.dependencies.length,
+            relatedTestCount: input.details.relatedTests.length,
+            confidence: "medium",
+            missing: input.details.relatedTests.length > 0 ? [] : ["No related tests appeared at this graph depth."]
+          },
       sourceGrounding: {
         status: "openai",
         model: config.openAiModel,

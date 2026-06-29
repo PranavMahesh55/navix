@@ -4,7 +4,7 @@ import type {
   OrbitDependency,
   OrbitQueryResult,
   OrbitSymbol
-} from "@orbit-atlas/shared";
+} from "@navix/shared";
 import { config } from "../config/env.js";
 
 type GraphBuildResult = {
@@ -125,7 +125,8 @@ export class GraphBuilder {
       source: item.source,
       target: item.target,
       label: item.label,
-      type: item.type
+      type: item.type,
+      evidence: item.evidence
     };
   }
 }

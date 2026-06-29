@@ -1,4 +1,4 @@
-import type { GraphEdge, GraphNode } from "@orbit-atlas/shared";
+import type { GraphEdge, GraphNode } from "@navix/shared";
 import type { Edge, Node } from "@xyflow/react";
 import type { AtlasNodeData } from "../types/graph";
 
@@ -32,7 +32,8 @@ export const buildFlowElements = (
   nodes: GraphNode[],
   edges: GraphEdge[],
   showTests: boolean,
-  selectedNodeId?: string | undefined
+  selectedNodeId?: string | undefined,
+  selectedEdgeId?: string | undefined
 ): { flowNodes: Node<AtlasNodeData>[]; flowEdges: Edge[] } => {
   const visibleNodes = nodes.filter((node) => showTests || node.type !== "test");
   const visibleIds = new Set(visibleNodes.map((node) => node.id));
@@ -68,19 +69,24 @@ export const buildFlowElements = (
   const flowEdges = visibleEdges.map((edge) => {
     const style = edgeStyles[edge.type];
     const isSelectedRelationship = hasSelection && (edge.source === selectedNodeId || edge.target === selectedNodeId);
+    const isSelectedEdge = edge.id === selectedEdgeId;
     const shouldLabel = !hasSelection || isSelectedRelationship;
-    const opacity = hasSelection ? (isSelectedRelationship ? 0.96 : 0.24) : 0.68;
+    const opacity = isSelectedEdge ? 1 : hasSelection ? (isSelectedRelationship ? 0.96 : 0.24) : 0.68;
     const flowEdge: Edge = {
       id: edge.id,
       source: edge.source,
       target: edge.target,
       label: shouldLabel ? edge.label : undefined,
       type: "smoothstep",
-      className: isSelectedRelationship ? "relationship-edge active" : "relationship-edge muted",
+      className: isSelectedEdge
+        ? "relationship-edge selected"
+        : isSelectedRelationship
+          ? "relationship-edge active"
+          : "relationship-edge muted",
       style: {
         stroke: style.color,
         strokeOpacity: opacity,
-        strokeWidth: isSelectedRelationship ? 2.8 : edge.type === "execution" ? 2.2 : 1.6
+        strokeWidth: isSelectedEdge ? 3.4 : isSelectedRelationship ? 2.8 : edge.type === "execution" ? 2.2 : 1.6
       },
       labelStyle: {
         fill: "#334155",

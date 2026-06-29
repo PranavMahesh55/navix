@@ -1,4 +1,4 @@
-import type { GraphNode } from "@orbit-atlas/shared";
+import type { GraphNode } from "@navix/shared";
 
 export type AtlasNodeData = {
   atlasNode: GraphNode;

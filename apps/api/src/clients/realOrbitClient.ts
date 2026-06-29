@@ -7,7 +7,7 @@ import type {
   OrbitQueryResult,
   OrbitSymbol,
   PromptIntent
-} from "@orbit-atlas/shared";
+} from "@navix/shared";
 import type { OrbitClient } from "../types/orbitClient.js";
 
 type RealOrbitClientOptions = {
@@ -63,6 +63,7 @@ type ComponentRecord = GraphNode & {
 
 type DepthSettings = {
   depth: number;
+  testFocused: boolean;
   definitionSearches: Array<"name" | "file_path" | "fqn">;
   definitionLimit: number;
   fileLimit: number;
@@ -148,7 +149,7 @@ export class RealOrbitClient implements OrbitClient {
 
     const projectPath = parseProjectPath(repoUrl);
     const tokens = buildSearchTokens(input);
-    const depthSettings = settingsForDepth(input.depth);
+    const depthSettings = settingsForDepth(input.depth, input.intent);
     const limitations = [
       "Orbit results are scoped to repositories the configured GitLab token can access.",
       "Orbit Remote indexes the default branch and may lag recent pushes until re-indexing completes."
@@ -593,7 +594,7 @@ export class RealOrbitClient implements OrbitClient {
       }
     }
 
-    return selectComponents(components, settings.componentLimit);
+    return selectComponents(components, settings.componentLimit, settings.testFocused);
   }
 
   private async buildDependencies(
@@ -637,7 +638,10 @@ export class RealOrbitClient implements OrbitClient {
         continue;
       }
 
-      addEdge(edges, sourceComponent.id, targetComponent.id, `calls ${targetComponent.label}`, "execution");
+      addEdge(edges, sourceComponent.id, targetComponent.id, `calls ${targetComponent.label}`, "execution", {
+        source: "orbit-call",
+        detail: `Orbit CALLS relationship from ${sourceComponent.label} to ${targetComponent.label}.`
+      });
     }
 
     for (const item of imports) {
@@ -655,7 +659,13 @@ export class RealOrbitClient implements OrbitClient {
         sourceComponent.id,
         targetComponent.id,
         item.identifierName ? `imports ${item.identifierName}` : "imports",
-        "dependency"
+        "dependency",
+        {
+          source: "orbit-import",
+          detail: item.identifierName
+            ? `Orbit import matched ${item.identifierName} in ${sourceComponent.filePath ?? sourceComponent.label}.`
+            : `Orbit import matched ${item.importPath ?? "an imported symbol"} in ${sourceComponent.filePath ?? sourceComponent.label}.`
+        }
       );
     }
 
@@ -704,6 +714,8 @@ export class RealOrbitClient implements OrbitClient {
         dependencies: uniqueOutgoing,
         dependents: uniqueIncoming,
         relatedTests: uniqueRelatedTests,
+        relationshipEvidence: relationshipEvidenceForComponent(component, dependencies, byId),
+        evidence: evidenceForComponent(component, uniqueOutgoing, uniqueIncoming, uniqueRelatedTests, dependencies),
         tags: node.tags ?? []
       });
     }
@@ -964,7 +976,11 @@ const buildSearchTokens = (input: PromptIntent) => {
     );
   }
 
-  return [...expanded].slice(0, 14);
+  if (input.intent === "test_coverage_view") {
+    ["test", "tests", "spec", "coverage", "_test"].forEach((token) => expanded.add(token));
+  }
+
+  return [...expanded].slice(0, input.intent === "test_coverage_view" ? 18 : 14);
 };
 
 const parseProjectPath = (repoUrl?: string) => {
@@ -983,8 +999,9 @@ const parseProjectPath = (repoUrl?: string) => {
   }
 };
 
-const settingsForDepth = (depth: number): DepthSettings => {
+const settingsForDepth = (depth: number, intent: PromptIntent["intent"] = "architecture_flow"): DepthSettings => {
   const normalizedDepth = Math.min(Math.max(Math.round(depth), 1), 4);
+  const testFocused = intent === "test_coverage_view";
   const definitionSearches: Array<"name" | "file_path" | "fqn"> =
     normalizedDepth === 1
       ? ["name"]
@@ -994,11 +1011,12 @@ const settingsForDepth = (depth: number): DepthSettings => {
 
   return {
     depth: normalizedDepth,
+    testFocused,
     definitionSearches,
-    definitionLimit: [0, 16, 32, 48, 72][normalizedDepth] ?? 32,
-    fileLimit: [0, 8, 16, 28, 40][normalizedDepth] ?? 16,
+    definitionLimit: ([0, 16, 32, 48, 72][normalizedDepth] ?? 32) + (testFocused ? 8 : 0),
+    fileLimit: ([0, 8, 16, 28, 40][normalizedDepth] ?? 16) + (testFocused ? 18 : 0),
     importLimit: [0, 0, 24, 56, 96][normalizedDepth] ?? 24,
-    componentLimit: [0, 8, 14, 20, 28][normalizedDepth] ?? 14,
+    componentLimit: ([0, 8, 14, 20, 28][normalizedDepth] ?? 14) + (testFocused ? 4 : 0),
     callSourceLimit: [0, 0, 0, 60, 120][normalizedDepth] ?? 0,
     callLimit: [0, 0, 0, 90, 180][normalizedDepth] ?? 0,
     includeImports: normalizedDepth >= 2,
@@ -1069,8 +1087,9 @@ const scoreComponent = (
   const pathScore = pathSignalScore(filePath, tokens);
   const countScore = Math.min(definitionCount, 6) * 2;
   const penalty = noisePenalty(filePath, names.join(" "));
+  const testIntentBonus = type === "test" && tokens.some((token) => /^(test|tests|spec|coverage|_test)$/.test(token)) ? 45 : 0;
 
-  return Math.min(100, Math.max(1, roleWeights[type] + tokenScore + pathScore + countScore - penalty - 20));
+  return Math.min(100, Math.max(1, roleWeights[type] + tokenScore + pathScore + countScore + testIntentBonus - penalty - 20));
 };
 
 const summaryForDefinitions = (
@@ -1424,7 +1443,7 @@ const concernSummary = (
   };
 };
 
-const selectComponents = (components: ComponentRecord[], limit: number) => {
+const selectComponents = (components: ComponentRecord[], limit: number, testFocused = false) => {
   const ranked = [...components].sort((a, b) => b.importanceScore - a.importanceScore);
   const production = ranked.filter((component) => component.type !== "test");
   const tests = ranked.filter((component) => component.type === "test");
@@ -1433,7 +1452,7 @@ const selectComponents = (components: ComponentRecord[], limit: number) => {
     return ranked.slice(0, limit);
   }
 
-  const maxTests = Math.min(tests.length, Math.max(1, Math.floor(limit * 0.2)));
+  const maxTests = Math.min(tests.length, testFocused ? Math.max(4, Math.floor(limit * 0.4)) : Math.max(1, Math.floor(limit * 0.2)));
   const selected = new Map<string, ComponentRecord>();
 
   for (const component of production.slice(0, Math.max(1, limit - maxTests))) {
@@ -1561,7 +1580,10 @@ const addTestEdges = (edges: Map<string, OrbitDependency>, components: Component
     });
 
     if (target) {
-      addEdge(edges, test.id, target.id, "covers", "test");
+      addEdge(edges, test.id, target.id, "covers", "test", {
+        source: "test-match",
+        detail: `Test-like file ${test.label} matched nearby production component ${target.label}.`
+      });
     }
   }
 };
@@ -1590,7 +1612,10 @@ const addModuleContextEdges = (edges: Map<string, OrbitDependency>, components: 
       if (component.id === anchor.id) {
         continue;
       }
-      addEdge(edges, anchor.id, component.id, "same module", "ownership");
+      addEdge(edges, anchor.id, component.id, "same module", "ownership", {
+        source: "module-context",
+        detail: `${anchor.label} and ${component.label} live in the same directory.`
+      });
     }
   }
 
@@ -1599,7 +1624,10 @@ const addModuleContextEdges = (edges: Map<string, OrbitDependency>, components: 
   for (const test of tests) {
     const target = bestProductionMatch(test, production);
     if (target) {
-      addEdge(edges, test.id, target.id, "covers nearby feature", "test");
+      addEdge(edges, test.id, target.id, "covers nearby feature", "test", {
+        source: "test-match",
+        detail: `Test-like file ${test.label} shares naming or directory signals with ${target.label}.`
+      });
     }
   }
 
@@ -1610,7 +1638,10 @@ const addModuleContextEdges = (edges: Map<string, OrbitDependency>, components: 
   if (authAnchor) {
     for (const component of highSignal) {
       if (component.id !== authAnchor.id) {
-        addEdge(edges, authAnchor.id, component.id, "auth area", "ownership");
+        addEdge(edges, authAnchor.id, component.id, "auth area", "ownership", {
+          source: "module-context",
+          detail: `${authAnchor.label} and ${component.label} share authentication path signals.`
+        });
       }
     }
   }
@@ -1659,16 +1690,70 @@ const applyEdgeMetadata = (components: ComponentRecord[], edges: OrbitDependency
   }
 };
 
+const relationshipEvidenceForComponent = (
+  component: ComponentRecord,
+  edges: OrbitDependency[],
+  byId: Map<string, GraphNode>
+) => {
+  return edges
+    .filter((edge) => edge.source === component.id || edge.target === component.id)
+    .slice(0, 8)
+    .map((edge) => {
+      const source = byId.get(edge.source)?.label ?? edge.source;
+      const target = byId.get(edge.target)?.label ?? edge.target;
+      return `${source} -> ${target}: ${edge.evidence?.detail ?? edge.label}`;
+    });
+};
+
+const evidenceForComponent = (
+  component: ComponentRecord,
+  outgoing: GraphNode[],
+  incoming: GraphNode[],
+  relatedTests: GraphNode[],
+  edges: OrbitDependency[]
+): NodeDetails["evidence"] => {
+  const relevantEdges = edges.filter((edge) => edge.source === component.id || edge.target === component.id);
+  const missing: string[] = [];
+
+  if (relatedTests.length === 0) {
+    missing.push("No related tests appeared at this graph depth.");
+  }
+  if (outgoing.length === 0) {
+    missing.push("No outgoing dependency was visible at this graph depth.");
+  }
+  if (component.definitionNames.length === 0) {
+    missing.push("Orbit did not return named definitions for this node.");
+  }
+
+  const confidence = relevantEdges.some((edge) => edge.evidence?.source === "orbit-call" || edge.evidence?.source === "orbit-import") &&
+    component.definitionNames.length > 0
+    ? "high"
+    : component.filePath || relevantEdges.length > 0
+      ? "medium"
+      : "low";
+
+  return {
+    sourceFile: component.filePath,
+    indexedDefinitionCount: component.definitionNames.length,
+    incomingCount: incoming.length,
+    outgoingCount: outgoing.length,
+    relatedTestCount: relatedTests.length,
+    confidence,
+    missing
+  };
+};
+
 const addEdge = (
   edges: Map<string, OrbitDependency>,
   source: string,
   target: string,
   label: string,
-  type: GraphEdge["type"]
+  type: GraphEdge["type"],
+  evidence?: OrbitDependency["evidence"]
 ) => {
   const id = `${source}->${target}:${label}`;
   if (!edges.has(id)) {
-    edges.set(id, { id, source, target, label, type });
+    edges.set(id, { id, source, target, label, type, evidence });
   }
 };
 
@@ -1687,7 +1772,11 @@ const collapseEdges = (edges: OrbitDependency[]) => {
 
   return [...byPair.values()].map(({ labels, ...edge }) => ({
     ...edge,
-    label: compactEdgeLabel(labels)
+    label: compactEdgeLabel(labels),
+    evidence: edge.evidence ?? {
+      source: "module-context" as const,
+      detail: compactEdgeLabel(labels)
+    }
   }));
 };
 

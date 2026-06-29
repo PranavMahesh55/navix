@@ -1,4 +1,4 @@
-import type { ArchitectureGenerateRequest, ArchitectureIntent, PromptIntent } from "@orbit-atlas/shared";
+import type { ArchitectureGenerateRequest, ArchitectureIntent, PromptIntent } from "@navix/shared";
 import { config } from "../config/env.js";
 
 const intentPatterns: Array<[ArchitectureIntent, RegExp]> = [
@@ -52,7 +52,23 @@ export class PromptParser {
       .replace(/[^a-z0-9 ]+/g, " ")
       .split(/\s+/)
       .filter(Boolean)
-      .filter((word) => !["explain", "how", "works", "work", "the", "a", "an", "flow"].includes(word));
+      .filter((word) => {
+        return ![
+          "a",
+          "an",
+          "coverage",
+          "explain",
+          "for",
+          "how",
+          "spec",
+          "test",
+          "tests",
+          "the",
+          "view",
+          "work",
+          "works"
+        ].includes(word);
+      });
 
     return normalized.slice(0, 3).join(" ") || "architecture";
   }

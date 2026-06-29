@@ -1,4 +1,4 @@
-import type { GraphEdge, GraphNode } from "@orbit-atlas/shared";
+import type { GraphEdge, GraphNode } from "@navix/shared";
 
 const sanitizeId = (id: string) => {
   const cleaned = id.replace(/[^a-zA-Z0-9_]/g, "_");

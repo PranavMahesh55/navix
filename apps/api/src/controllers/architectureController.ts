@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import type { ArchitectureGenerateRequest, MermaidExportRequest } from "@orbit-atlas/shared";
+import type { ArchitectureGenerateRequest, MermaidExportRequest } from "@navix/shared";
 import { z } from "zod";
 import { GitLabSourceClient } from "../clients/gitlabSourceClient.js";
 import { config } from "../config/env.js";
