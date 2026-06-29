@@ -42,13 +42,11 @@ export const expandNode = (payload: NodeExpansionRequest) => {
   });
 };
 
-export const getNodeDetails = (nodeId: string, repoUrl?: string | undefined) => {
-  const params = new URLSearchParams();
-  if (repoUrl) {
-    params.set("repoUrl", repoUrl);
-  }
-  const suffix = params.size > 0 ? `?${params.toString()}` : "";
-  return request<NodeDetails>(`/architecture/node/${encodeURIComponent(nodeId)}${suffix}`);
+export const getNodeDetails = (nodeId: string, repoUrl?: string | undefined, details?: NodeDetails | undefined) => {
+  return request<NodeDetails>(`/architecture/node/${encodeURIComponent(nodeId)}`, {
+    method: "POST",
+    body: JSON.stringify({ repoUrl, details })
+  });
 };
 
 export const exportMermaid = (nodes: GraphNode[], edges: GraphEdge[], title?: string) => {

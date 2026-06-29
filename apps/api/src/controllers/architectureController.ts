@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import type { ArchitectureGenerateRequest, MermaidExportRequest } from "@navix/shared";
+import type { ArchitectureGenerateRequest, MermaidExportRequest, NodeDetails } from "@navix/shared";
 import { z } from "zod";
 import { GitLabSourceClient } from "../clients/gitlabSourceClient.js";
 import { config } from "../config/env.js";
@@ -64,6 +64,11 @@ const mermaidSchema = z.object({
 
 const nodeDetailsQuerySchema = z.object({
   repoUrl: z.string().url().optional()
+});
+
+const nodeDetailsBodySchema = z.object({
+  repoUrl: z.string().url().optional(),
+  details: z.custom<NodeDetails>().optional()
 });
 
 export class ArchitectureController {
@@ -134,13 +139,15 @@ export class ArchitectureController {
     }
 
     const query = nodeDetailsQuerySchema.parse(req.query);
-    const details = await this.orbitService.getNodeDetails(nodeId);
+    const body = nodeDetailsBodySchema.parse(req.body ?? {});
+    const details = body.details ?? await this.orbitService.getNodeDetails(nodeId);
     if (!details) {
       res.status(404).json({ error: `Node ${nodeId} was not found in Orbit results.` });
       return;
     }
 
-    if (!query.repoUrl) {
+    const repoUrl = body.repoUrl ?? query.repoUrl;
+    if (!repoUrl) {
       throw new Error("Source-grounded node details failed: repoUrl query parameter is required.");
     }
 
@@ -148,11 +155,11 @@ export class ArchitectureController {
       throw new Error(`Source-grounded node details failed: node ${details.label} does not have a file path.`);
     }
 
-    const source = await this.sourceClient.getRawFile(query.repoUrl, details.filePath);
+    const source = await this.sourceClient.getRawFile(repoUrl, details.filePath);
     const snippet = this.snippetService.buildSnippet(source, details);
     const semanticDetails = await this.semanticExplanationService.explain({
       details,
-      repoUrl: query.repoUrl,
+      repoUrl,
       sourceSnippet: snippet.text,
       snippetLineCount: snippet.lineCount
     });

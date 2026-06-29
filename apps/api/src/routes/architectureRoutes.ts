@@ -8,6 +8,7 @@ export const architectureRoutes = Router();
 architectureRoutes.post("/generate", asyncHandler(controller.generate));
 architectureRoutes.post("/expand-node", asyncHandler(controller.expandNode));
 architectureRoutes.get("/node/:nodeId", asyncHandler(controller.nodeDetails));
+architectureRoutes.post("/node/:nodeId", asyncHandler(controller.nodeDetails));
 architectureRoutes.post("/export/mermaid", controller.exportMermaid);
 
 function asyncHandler(handler: (req: Request, res: Response, next: NextFunction) => Promise<void>) {

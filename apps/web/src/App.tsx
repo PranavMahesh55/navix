@@ -400,7 +400,7 @@ export const App = () => {
 
     try {
       setError(undefined);
-      const enriched = await getNodeDetails(nodeId, repoUrl);
+      const enriched = await getNodeDetails(nodeId, repoUrl, details);
       setResponse((latest) => {
         if (!latest) {
           return latest;
