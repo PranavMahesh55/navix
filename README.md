@@ -55,7 +55,7 @@ Use these Vercel project settings:
 Framework Preset: Other
 Root Directory: .
 Install Command: npm install
-Build Command: npm run build -w @navix/shared && npm run build -w @navix/web
+Build Command: npm run build -w @navix/shared && npm run build -w @navix/api && npm run build -w @navix/web
 Output Directory: apps/web/dist
 ```
 
