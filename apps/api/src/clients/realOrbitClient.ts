@@ -1193,26 +1193,42 @@ const tokenFilter = (tokens: string[]) => ({
 
 const classifyRole = (filePath?: string, name?: string): ArchitectureNodeType => {
   const source = `${filePath ?? ""} ${name ?? ""}`.toLowerCase();
+  const baseName = basename(filePath ?? name ?? "").toLowerCase().replace(/\.[a-z0-9]+$/, "");
 
   if (/(^|[/_.-])(test|tests|spec|specs|__tests__|integration-tests|fixtures)([/_.-]|$)|\.(test|spec)\./.test(source)) {
     return "test";
   }
-  if (/\b(controller|handler|resolver)\b/.test(source)) {
-    return "controller";
-  }
-  if (/\b(service|manager|usecase|interactor)\b/.test(source)) {
-    return "service";
-  }
-  if (/\b(route|router|api|client|endpoint)\b/.test(source)) {
-    return "api";
-  }
-  if (/\b(page|view|component|screen|tsx|jsx)\b/.test(source)) {
+  if (/^(jsx|tsx|component|view|page|screen)$/.test(baseName)) {
     return "ui";
   }
-  if (/\b(model|entity|schema|repository|dao|record)\b/.test(source)) {
+  if (/^(api|client|route|router|endpoint|transport|protocol|rpc|rest|graphql|cjs|esm|http|grpc)$/.test(baseName)) {
+    return "api";
+  }
+  if (/^(resolver|controller|handler|dispatcher|command)$/.test(baseName)) {
+    return "controller";
+  }
+  if (/^(engine|analyzer|analyze|extractor|extractors|processor|pipeline|linker|loader|builder|runner|executor|calls)$/.test(baseName)) {
+    return "service";
+  }
+  if (/^(graph|rule|rules|state|type|types|ast|ssa|ir|inventory|dsl|schema|model|entity|record)$/.test(baseName)) {
     return "model";
   }
-  if (/\b(db|database|migration|table|store)\b/.test(source)) {
+  if (/\b(page|view|component|screen|tsx|jsx|react|vue|svelte)\b/.test(source)) {
+    return "ui";
+  }
+  if (/\b(route|router|api|client|endpoint|transport|protocol|rpc|rest|graphql|webhook)\b/.test(source) || /(^|[/_.-])(cjs|esm|http|grpc)([/_.-]|$)/.test(source)) {
+    return "api";
+  }
+  if (/\b(controller|handler|resolver|dispatcher|command)\b/.test(source)) {
+    return "controller";
+  }
+  if (/\b(service|manager|usecase|interactor|engine|analyzer|analyse|analyze|extractor|extractors|processor|pipeline|linker|loader|builder|runner|executor)\b/.test(source)) {
+    return "service";
+  }
+  if (/\b(model|entity|schema|repository|dao|record|graph|node|edge|rule|rules|state|types?|ast|ssa|ir|inventory|dsl|domain|context)\b/.test(source)) {
+    return "model";
+  }
+  if (/\b(db|database|migration|table|store|cache|index|indexer|registry)\b/.test(source)) {
     return "database";
   }
   if (/\b(config|settings|env)\b/.test(source)) {
@@ -1220,6 +1236,9 @@ const classifyRole = (filePath?: string, name?: string): ArchitectureNodeType =>
   }
   if (/\b(http|grpc|external|gateway|provider)\b/.test(source)) {
     return "external";
+  }
+  if (/^(mod|lib|main|index)$/.test(baseName)) {
+    return "service";
   }
 
   return "utility";

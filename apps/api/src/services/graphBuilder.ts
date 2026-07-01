@@ -46,10 +46,26 @@ export class GraphBuilder {
 
   private keepReadableGraph(symbols: OrbitSymbol[], dependencies: OrbitDependency[], maxNodes: number) {
     const selected = new Map<string, OrbitSymbol>();
+    const selectedByType = new Map<string, number>();
 
     const entrypoints = symbols.filter((item) => item.tags?.includes("entrypoint"));
     for (const item of entrypoints) {
       selected.set(item.id, item);
+      selectedByType.set(item.type, (selectedByType.get(item.type) ?? 0) + 1);
+    }
+
+    for (const item of symbols) {
+      if (selected.size >= maxNodes) {
+        break;
+      }
+      if (selected.has(item.id)) {
+        continue;
+      }
+      if ((selectedByType.get(item.type) ?? 0) >= this.typeCap(item.type, maxNodes)) {
+        continue;
+      }
+      selected.set(item.id, item);
+      selectedByType.set(item.type, (selectedByType.get(item.type) ?? 0) + 1);
     }
 
     for (const item of symbols) {
@@ -71,6 +87,16 @@ export class GraphBuilder {
     }
 
     return [...selected.values()];
+  }
+
+  private typeCap(type: string, maxNodes: number) {
+    if (type === "utility") {
+      return Math.max(3, Math.floor(maxNodes * 0.25));
+    }
+    if (type === "service" || type === "model") {
+      return Math.max(5, Math.floor(maxNodes * 0.35));
+    }
+    return Math.max(3, Math.floor(maxNodes * 0.25));
   }
 
   private depthLimits(depth: number) {

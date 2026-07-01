@@ -16,8 +16,9 @@ const typeLevel: Record<string, number> = {
 };
 
 const maxColumn = 6;
-const columnSpacing = 304;
-const rowSpacing = 118;
+const minColumnSpacing = 330;
+const laneSpacing = 230;
+const rowSpacing = 124;
 
 const edgeStyles: Record<GraphEdge["type"], { color: string; dashed?: boolean; animated?: boolean }> = {
   execution: { color: "#18796f", animated: true },
@@ -47,19 +48,25 @@ export const buildFlowElements = (
     const level = levels.get(node.id) ?? typeLevel[node.type] ?? 3;
     grouped.set(level, [...(grouped.get(level) ?? []), node]);
   }
+  const levelLayouts = buildLevelLayouts(grouped);
 
   const flowNodes = visibleNodes.map((node) => {
     const level = levels.get(node.id) ?? typeLevel[node.type] ?? 3;
     const group = grouped.get(level) ?? [node];
     const index = group.findIndex((candidate) => candidate.id === node.id);
-    const centeredIndex = index - (group.length - 1) / 2;
+    const layout = levelLayouts.get(level) ?? { x: 56, rowsPerLane: 8 };
+    const lane = Math.floor(index / layout.rowsPerLane);
+    const indexInLane = index % layout.rowsPerLane;
+    const laneStart = lane * layout.rowsPerLane;
+    const laneSize = Math.min(layout.rowsPerLane, group.length - laneStart);
+    const centeredIndex = indexInLane - (laneSize - 1) / 2;
 
     return {
       id: node.id,
       type: "atlas",
       data: { atlasNode: node },
       position: {
-        x: 56 + level * columnSpacing,
+        x: layout.x + lane * laneSpacing,
         y: 96 + centeredIndex * rowSpacing
       }
     } satisfies Node<AtlasNodeData>;
@@ -118,6 +125,35 @@ export const buildFlowElements = (
   });
 
   return { flowNodes, flowEdges };
+};
+
+const buildLevelLayouts = (grouped: Map<number, GraphNode[]>) => {
+  const layouts = new Map<number, { x: number; rowsPerLane: number }>();
+  const levels = [...grouped.keys()].sort((a, b) => a - b);
+  let nextX = 56;
+
+  for (const level of levels) {
+    const groupSize = grouped.get(level)?.length ?? 0;
+    const rowsPerLane = rowsPerLaneForGroup(groupSize);
+    const laneCount = Math.max(1, Math.ceil(groupSize / rowsPerLane));
+    layouts.set(level, { x: nextX, rowsPerLane });
+    nextX += Math.max(minColumnSpacing, laneCount * laneSpacing + 120);
+  }
+
+  return layouts;
+};
+
+const rowsPerLaneForGroup = (groupSize: number) => {
+  if (groupSize >= 18) {
+    return 5;
+  }
+  if (groupSize >= 12) {
+    return 6;
+  }
+  if (groupSize >= 8) {
+    return 7;
+  }
+  return 8;
 };
 
 const computeNodeLevels = (nodes: GraphNode[], edges: GraphEdge[]) => {
