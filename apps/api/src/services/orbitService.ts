@@ -12,7 +12,9 @@ export class OrbitService {
       config.orbitProvider === "orbit"
         ? new RealOrbitClient({
             apiUrl: config.orbitApiUrl,
-            apiKey: config.orbitApiKey || config.gitlabToken
+            apiKey: config.orbitApiKey || config.gitlabToken,
+            gitlabBaseUrl: config.gitlabBaseUrl,
+            gitlabToken: config.gitlabToken
           })
         : new MockOrbitClient();
   }

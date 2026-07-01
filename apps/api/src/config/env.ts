@@ -27,13 +27,25 @@ const booleanFromEnv = (key: string, fallback: boolean) => {
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
 };
 
+const orbitProviderFromEnv = () => {
+  if (process.env.ORBIT_PROVIDER) {
+    return process.env.ORBIT_PROVIDER;
+  }
+
+  if (process.env.NODE_ENV === "production" && process.env.ORBIT_API_URL && (process.env.ORBIT_API_KEY || process.env.GITLAB_TOKEN)) {
+    return "orbit";
+  }
+
+  return "mock";
+};
+
 export const config = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   port: numberFromEnv("PORT", 8080),
   frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:5173",
   gitlabBaseUrl: process.env.GITLAB_BASE_URL ?? "https://gitlab.com",
   gitlabToken: process.env.GITLAB_TOKEN,
-  orbitProvider: process.env.ORBIT_PROVIDER ?? "mock",
+  orbitProvider: orbitProviderFromEnv(),
   orbitApiUrl: process.env.ORBIT_API_URL,
   orbitApiKey: process.env.ORBIT_API_KEY,
   openAiApiKey: process.env.OPENAI_API_KEY,

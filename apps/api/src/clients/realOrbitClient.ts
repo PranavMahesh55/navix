@@ -13,6 +13,8 @@ import type { OrbitClient } from "../types/orbitClient.js";
 type RealOrbitClientOptions = {
   apiUrl?: string | undefined;
   apiKey?: string | undefined;
+  gitlabBaseUrl?: string | undefined;
+  gitlabToken?: string | undefined;
 };
 
 type OrbitQueryEnvelope = {
@@ -136,12 +138,16 @@ const roleWeights: Record<ArchitectureNodeType, number> = {
 export class RealOrbitClient implements OrbitClient {
   private readonly apiUrl?: string | undefined;
   private readonly apiKey?: string | undefined;
+  private readonly gitlabBaseUrl: string;
+  private readonly gitlabToken?: string | undefined;
   private readonly detailsCache = new Map<string, NodeDetails>();
   private readonly lastComponents = new Map<string, ComponentRecord>();
 
   constructor(options: RealOrbitClientOptions) {
     this.apiUrl = options.apiUrl;
     this.apiKey = options.apiKey;
+    this.gitlabBaseUrl = (options.gitlabBaseUrl ?? "https://gitlab.com").replace(/\/+$/, "");
+    this.gitlabToken = options.gitlabToken;
   }
 
   async queryArchitecture(input: PromptIntent, repoUrl?: string): Promise<OrbitQueryResult> {
@@ -167,9 +173,14 @@ export class RealOrbitClient implements OrbitClient {
     }
 
     const definitions = await this.findRelevantDefinitions(tokens, projectPath, limitations, depthSettings);
-    const files = definitions.length < 4 || depthSettings.depth >= 2
+    let files = definitions.length < 4 || depthSettings.depth >= 2
       ? await this.findRelevantFiles(tokens, projectPath, limitations, depthSettings)
       : [];
+
+    if (files.length === 0 && projectPath) {
+      files = await this.findRelevantGitLabFiles(tokens, projectPath, limitations, depthSettings);
+    }
+
     const components = this.buildComponents(definitions, files, tokens, depthSettings);
     const imports = components.length > 0 && depthSettings.includeImports
       ? await this.findRelevantImports(tokens, projectPath, limitations, depthSettings)
@@ -313,6 +324,84 @@ export class RealOrbitClient implements OrbitClient {
     }
 
     return [...imports.values()];
+  }
+
+  private async findRelevantGitLabFiles(
+    tokens: string[],
+    projectPath: string,
+    limitations: string[],
+    settings: DepthSettings
+  ) {
+    const files = new Map<string, OrbitFile>();
+    const searchTerms = unique(coreSearchTokens(tokens).length > 0 ? coreSearchTokens(tokens) : tokens)
+      .filter((token) => token.length >= 3)
+      .slice(0, 6);
+
+    for (const term of searchTerms) {
+      try {
+        const rows = await this.queryGitLabBlobSearch(projectPath, term, Math.max(8, Math.ceil(settings.fileLimit / 2)));
+        for (const file of rows) {
+          if (pathSignalScore(file.path, tokens) > 0) {
+            files.set(normalizePath(file.path), file);
+          }
+        }
+      } catch (error) {
+        limitations.push(`GitLab source search for "${term}" was skipped: ${sanitizeError(error)}.`);
+      }
+    }
+
+    const recovered = [...files.values()]
+      .sort((a, b) => pathSignalScore(b.path, tokens) - pathSignalScore(a.path, tokens))
+      .slice(0, settings.fileLimit);
+
+    if (recovered.length > 0) {
+      limitations.push("Orbit definition traversal returned no files, so Navix recovered real files through GitLab repository search.");
+    }
+
+    return recovered;
+  }
+
+  private async queryGitLabBlobSearch(projectPath: string, term: string, limit: number): Promise<OrbitFile[]> {
+    const url = new URL(`${this.gitlabBaseUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/search`);
+    url.searchParams.set("scope", "blobs");
+    url.searchParams.set("search", term);
+    url.searchParams.set("per_page", String(Math.min(Math.max(limit, 1), 100)));
+
+    const headers: Record<string, string> = {
+      Accept: "application/json"
+    };
+    if (this.gitlabToken) {
+      headers["PRIVATE-TOKEN"] = this.gitlabToken;
+    }
+
+    const response = await fetch(url, { headers });
+    if (!response.ok) {
+      throw new Error(`GitLab search failed with ${response.status}: ${await safeResponseText(response)}`);
+    }
+
+    const rows = await response.json().catch(() => []) as unknown;
+    if (!Array.isArray(rows)) {
+      return [];
+    }
+
+    return rows
+      .map((row): OrbitFile | undefined => {
+        if (!isRecord(row)) {
+          return undefined;
+        }
+        const path = stringValue(row, "path") ?? stringValue(row, "filename");
+        if (!path) {
+          return undefined;
+        }
+        const extension = path.includes(".") ? path.split(".").at(-1) : undefined;
+        return {
+          id: `gitlab:${stableHash(path)}`,
+          path,
+          name: basename(path),
+          ...(extension ? { extension } : {})
+        } satisfies OrbitFile;
+      })
+      .filter((value): value is OrbitFile => Boolean(value));
   }
 
   private async queryDefinitions(
@@ -799,14 +888,14 @@ export class RealOrbitClient implements OrbitClient {
   }
 
   private async orbitQuery(query: unknown): Promise<OrbitQueryEnvelope> {
-    const response = await this.sendOrbitRequest({ query, response_format: "raw" });
+    const response = await this.sendOrbitRequestWithRetry({ query, response_format: "raw" });
 
     if (response.ok) {
       return (await response.json()) as OrbitQueryEnvelope;
     }
 
     if (response.status === 400) {
-      const retry = await this.sendOrbitRequest({ query, format: "raw" });
+      const retry = await this.sendOrbitRequestWithRetry({ query, format: "raw" });
       if (retry.ok) {
         return (await retry.json()) as OrbitQueryEnvelope;
       }
@@ -814,7 +903,7 @@ export class RealOrbitClient implements OrbitClient {
     }
 
     if (response.status === 401 || response.status === 403) {
-      const retry = await this.sendOrbitRequest(
+      const retry = await this.sendOrbitRequestWithRetry(
         { query, response_format: "raw" },
         "PRIVATE-TOKEN"
       );
@@ -825,6 +914,15 @@ export class RealOrbitClient implements OrbitClient {
     }
 
     throw new Error(`Orbit query failed with ${response.status}: ${await safeResponseText(response)}`);
+  }
+
+  private async sendOrbitRequestWithRetry(body: unknown, authStyle: "bearer" | "PRIVATE-TOKEN" = "bearer") {
+    let response = await this.sendOrbitRequest(body, authStyle);
+    for (let attempt = 1; attempt < 3 && isTransientOrbitStatus(response.status); attempt += 1) {
+      await delay(350 * attempt);
+      response = await this.sendOrbitRequest(body, authStyle);
+    }
+    return response;
   }
 
   private async sendOrbitRequest(body: unknown, authStyle: "bearer" | "PRIVATE-TOKEN" = "bearer") {
@@ -1893,6 +1991,10 @@ const sanitizeError = (error: unknown) => {
   const message = error instanceof Error ? error.message : "Unknown Orbit error";
   return message.replace(/glpat-[A-Za-z0-9_.-]+/g, "[redacted-token]");
 };
+
+const isTransientOrbitStatus = (status: number) => status === 502 || status === 503 || status === 504;
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const safeResponseText = async (response: Response) => {
   const text = await response.text().catch(() => "");
