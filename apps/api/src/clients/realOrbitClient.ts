@@ -351,15 +351,15 @@ export class RealOrbitClient implements OrbitClient {
     }
 
     if (files.size > 0) {
-      const siblingDirectories = unique([...files.values()].map((file) => dirname(file.path)).filter(Boolean)).slice(0, 4);
-      for (const directory of siblingDirectories) {
+      const expansionScopes = gitLabRecoveryScopes([...files.values()], settings.depth);
+      for (const scope of expansionScopes) {
         try {
-          const rows = await this.queryGitLabTree(projectPath, directory, settings.fileLimit);
+          const rows = await this.queryGitLabTree(projectPath, scope.directory, settings.fileLimit, scope.recursive);
           for (const file of rows) {
             files.set(normalizePath(file.path), file);
           }
         } catch (error) {
-          limitations.push(`GitLab tree expansion for "${directory}" was skipped: ${sanitizeError(error)}.`);
+          limitations.push(`GitLab tree expansion for "${scope.directory}" was skipped: ${sanitizeError(error)}.`);
         }
       }
     }
@@ -418,10 +418,18 @@ export class RealOrbitClient implements OrbitClient {
       .filter((value): value is OrbitFile => Boolean(value));
   }
 
-  private async queryGitLabTree(projectPath: string, directory: string, limit: number): Promise<OrbitFile[]> {
+  private async queryGitLabTree(
+    projectPath: string,
+    directory: string,
+    limit: number,
+    recursive = false
+  ): Promise<OrbitFile[]> {
     const url = new URL(`${this.gitlabBaseUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/repository/tree`);
     url.searchParams.set("path", directory);
     url.searchParams.set("per_page", String(Math.min(Math.max(limit, 1), 100)));
+    if (recursive) {
+      url.searchParams.set("recursive", "true");
+    }
 
     const headers: Record<string, string> = {
       Accept: "application/json"
@@ -1536,6 +1544,36 @@ const recoveredFileScore = (filePath: string | undefined, tokens: string[]) => {
 
 const isLikelySourceFile = (filePath: string) => {
   return /\.(c|cc|cpp|cs|css|go|java|js|jsx|kt|mjs|py|rb|rs|scala|swift|ts|tsx|vue)$/i.test(filePath);
+};
+
+const gitLabRecoveryScopes = (files: OrbitFile[], depth: number) => {
+  const scopes = new Map<string, { directory: string; recursive: boolean }>();
+  const addScope = (directory: string, recursive: boolean) => {
+    if (!directory || directory.split("/").length < 2) {
+      return;
+    }
+
+    const current = scopes.get(directory);
+    scopes.set(directory, {
+      directory,
+      recursive: Boolean(current?.recursive || recursive)
+    });
+  };
+
+  for (const file of files) {
+    const directDirectory = dirname(file.path);
+    addScope(directDirectory, false);
+
+    if (depth >= 3) {
+      addScope(dirname(directDirectory), false);
+    }
+
+    if (depth >= 4) {
+      addScope(dirname(directDirectory), true);
+    }
+  }
+
+  return [...scopes.values()].slice(0, depth >= 4 ? 8 : 4);
 };
 
 const noisePenalty = (filePath: string | undefined, namesText = "") => {
