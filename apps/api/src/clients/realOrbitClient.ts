@@ -350,8 +350,22 @@ export class RealOrbitClient implements OrbitClient {
       }
     }
 
+    if (files.size > 0) {
+      const siblingDirectories = unique([...files.values()].map((file) => dirname(file.path)).filter(Boolean)).slice(0, 4);
+      for (const directory of siblingDirectories) {
+        try {
+          const rows = await this.queryGitLabTree(projectPath, directory, settings.fileLimit);
+          for (const file of rows) {
+            files.set(normalizePath(file.path), file);
+          }
+        } catch (error) {
+          limitations.push(`GitLab tree expansion for "${directory}" was skipped: ${sanitizeError(error)}.`);
+        }
+      }
+    }
+
     const recovered = [...files.values()]
-      .sort((a, b) => pathSignalScore(b.path, tokens) - pathSignalScore(a.path, tokens))
+      .sort((a, b) => recoveredFileScore(b.path, tokens) - recoveredFileScore(a.path, tokens))
       .slice(0, settings.fileLimit);
 
     if (recovered.length > 0) {
@@ -396,6 +410,48 @@ export class RealOrbitClient implements OrbitClient {
         const extension = path.includes(".") ? path.split(".").at(-1) : undefined;
         return {
           id: `gitlab:${stableHash(path)}`,
+          path,
+          name: basename(path),
+          ...(extension ? { extension } : {})
+        } satisfies OrbitFile;
+      })
+      .filter((value): value is OrbitFile => Boolean(value));
+  }
+
+  private async queryGitLabTree(projectPath: string, directory: string, limit: number): Promise<OrbitFile[]> {
+    const url = new URL(`${this.gitlabBaseUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/repository/tree`);
+    url.searchParams.set("path", directory);
+    url.searchParams.set("per_page", String(Math.min(Math.max(limit, 1), 100)));
+
+    const headers: Record<string, string> = {
+      Accept: "application/json"
+    };
+    if (this.gitlabToken) {
+      headers["PRIVATE-TOKEN"] = this.gitlabToken;
+    }
+
+    const response = await fetch(url, { headers });
+    if (!response.ok) {
+      throw new Error(`GitLab tree failed with ${response.status}: ${await safeResponseText(response)}`);
+    }
+
+    const rows = await response.json().catch(() => []) as unknown;
+    if (!Array.isArray(rows)) {
+      return [];
+    }
+
+    return rows
+      .map((row): OrbitFile | undefined => {
+        if (!isRecord(row) || stringValue(row, "type") !== "blob") {
+          return undefined;
+        }
+        const path = stringValue(row, "path");
+        if (!path || !isLikelySourceFile(path)) {
+          return undefined;
+        }
+        const extension = path.includes(".") ? path.split(".").at(-1) : undefined;
+        return {
+          id: stringValue(row, "id") ?? `gitlab:${stableHash(path)}`,
           path,
           name: basename(path),
           ...(extension ? { extension } : {})
@@ -642,7 +698,7 @@ export class RealOrbitClient implements OrbitClient {
 
     const knownPaths = new Set([...byPath.keys()].map(normalizePath));
     const extraFiles = files.filter((file) => {
-      return !knownPaths.has(normalizePath(file.path)) && pathSignalScore(file.path, tokens) > 0;
+      return !knownPaths.has(normalizePath(file.path)) && (byPath.size === 0 || pathSignalScore(file.path, tokens) > 0);
     });
 
     for (const file of extraFiles) {
@@ -1462,6 +1518,24 @@ const pathSignalScore = (filePath: string | undefined, tokens: string[]) => {
   }
 
   return Math.min(score, 60);
+};
+
+const recoveredFileScore = (filePath: string | undefined, tokens: string[]) => {
+  if (!filePath) {
+    return 0;
+  }
+
+  const directScore = pathSignalScore(filePath, tokens);
+  const normalized = normalizePath(filePath);
+  const directoryScore = normalized.includes("/src/") ? 12 : 0;
+  const sourceScore = isLikelySourceFile(filePath) ? 10 : 0;
+  const noise = noisePenalty(filePath);
+
+  return directScore + directoryScore + sourceScore - noise;
+};
+
+const isLikelySourceFile = (filePath: string) => {
+  return /\.(c|cc|cpp|cs|css|go|java|js|jsx|kt|mjs|py|rb|rs|scala|swift|ts|tsx|vue)$/i.test(filePath);
 };
 
 const noisePenalty = (filePath: string | undefined, namesText = "") => {
